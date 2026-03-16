@@ -76,16 +76,6 @@ http://localhost:5173
 
 ## 最常見的失敗原因
 
-### `cargo install tauri-cli` 失敗
-
-先改用：
-
-```powershell
-npm install -D @tauri-apps/cli
-```
-
-因為這個專案的 scripts 只需要能呼叫到 `tauri` 指令，不一定非得裝成全域 Rust CLI。
-
 ### `tauri` 不是內部或外部命令
 
 通常表示還沒安裝專案內的 CLI，執行：

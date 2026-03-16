@@ -40,11 +40,51 @@ fn list_templates(
 }
 
 #[tauri::command]
+fn create_template(
+    app: AppHandle,
+    request: storage::UpsertTemplateRequest,
+) -> Result<storage::TemplateMutationResponse, String> {
+    storage::create_template(&app, request)
+}
+
+#[tauri::command]
+fn update_template(
+    app: AppHandle,
+    request: storage::UpdateTemplateRequest,
+) -> Result<storage::TemplateMutationResponse, String> {
+    storage::update_template(&app, request)
+}
+
+#[tauri::command]
 fn clone_builtin_template(
     app: AppHandle,
     request: storage::CloneBuiltinTemplateRequest,
 ) -> Result<(), String> {
     storage::clone_builtin_template(&app, request)
+}
+
+#[tauri::command]
+fn delete_user_template(
+    app: AppHandle,
+    request: storage::DeleteUserTemplateRequest,
+) -> Result<(), String> {
+    storage::delete_user_template(&app, request)
+}
+
+#[tauri::command]
+fn save_build_result(
+    app: AppHandle,
+    request: storage::SaveBuildResultRequest,
+) -> Result<storage::SaveBuildResultResponse, String> {
+    storage::save_build_result(&app, request)
+}
+
+#[tauri::command]
+fn list_recent_build_results(
+    app: AppHandle,
+    request: storage::ListRecentBuildResultsRequest,
+) -> Result<storage::ListRecentBuildResultsResponse, String> {
+    storage::list_recent_build_results(&app, request)
 }
 
 #[tauri::command]
@@ -69,7 +109,12 @@ pub fn run() {
             get_mindmap_detail,
             save_mindmap_snapshot,
             list_templates,
+            create_template,
+            update_template,
             clone_builtin_template,
+            delete_user_template,
+            save_build_result,
+            list_recent_build_results,
             export_json_to_file,
             import_json_from_file
         ])

@@ -3,13 +3,21 @@ import Database from "@tauri-apps/plugin-sql";
 import type {
   AppInitializeResponse,
   CloneBuiltinTemplateRequest,
+  CreateTemplateRequest,
+  DeleteUserTemplateRequest,
   JsonImportResponse,
+  ListRecentBuildResultsRequest,
+  ListRecentBuildResultsResponse,
   ListMindmapsResponse,
   ListTemplatesRequest,
   ListTemplatesResponse,
+  SaveBuildResultRequest,
+  SaveBuildResultResponse,
   SaveMindmapSnapshotRequest,
   SaveMindmapSnapshotResponse,
-  StorageStatusResponse
+  StorageStatusResponse,
+  TemplateMutationResponse,
+  UpdateTemplateRequest,
 } from "../domain/contracts";
 import { tauriCommands } from "../domain/contracts";
 import type { MindmapDetail } from "../domain/models";
@@ -40,8 +48,25 @@ export const saveMindmapSnapshot = async (
 export const listTemplates = async (request: ListTemplatesRequest): Promise<ListTemplatesResponse> =>
   invoke<ListTemplatesResponse>(tauriCommands.listTemplates, { request });
 
+export const createTemplate = async (request: CreateTemplateRequest): Promise<TemplateMutationResponse> =>
+  invoke<TemplateMutationResponse>(tauriCommands.createTemplate, { request });
+
+export const updateTemplate = async (request: UpdateTemplateRequest): Promise<TemplateMutationResponse> =>
+  invoke<TemplateMutationResponse>(tauriCommands.updateTemplate, { request });
+
 export const cloneBuiltinTemplate = async (request: CloneBuiltinTemplateRequest): Promise<void> =>
   invoke<void>(tauriCommands.cloneBuiltinTemplate, { request });
+
+export const deleteUserTemplate = async (request: DeleteUserTemplateRequest): Promise<void> =>
+  invoke<void>(tauriCommands.deleteUserTemplate, { request });
+
+export const saveBuildResult = async (request: SaveBuildResultRequest): Promise<SaveBuildResultResponse> =>
+  invoke<SaveBuildResultResponse>(tauriCommands.saveBuildResult, { request });
+
+export const listRecentBuildResults = async (
+  request: ListRecentBuildResultsRequest
+): Promise<ListRecentBuildResultsResponse> =>
+  invoke<ListRecentBuildResultsResponse>(tauriCommands.listRecentBuildResults, { request });
 
 export const exportJsonToFile = async (path: string, payload: unknown): Promise<void> =>
   invoke<void>(tauriCommands.exportJsonToFile, { path, payload });

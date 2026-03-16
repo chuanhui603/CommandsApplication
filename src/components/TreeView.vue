@@ -1,14 +1,15 @@
 <template>
   <div class="tree">
-    <button class="add-button" type="button" @click="$emit('add-node')">+ Add Node</button>
+    <button class="add-button" type="button" @click="$emit('add-node')">{{ t("tree.addNode") }}</button>
     <div
       class="toolbox-item"
       draggable="true"
       @dragstart="onDragStart"
     >
-      Drag: Command Node
+      {{ t("tree.dragNode") }}
     </div>
-    <ul>
+    <p v-if="nodes.length === 0" class="empty-state">{{ t("tree.empty") }}</p>
+    <ul v-else>
       <li
         v-for="node in nodes"
         :key="node.id"
@@ -23,6 +24,9 @@
 
 <script setup lang="ts">
 import type { CommandNode } from "../domain/models";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 defineProps<{
   nodes: CommandNode[];
@@ -61,6 +65,12 @@ const onDragStart = (event: DragEvent): void => {
   padding: 8px;
   color: #a5bed8;
   cursor: grab;
+}
+
+.empty-state {
+  margin: 0;
+  color: #a5bed8;
+  font-size: 13px;
 }
 
 ul {

@@ -1,9 +1,12 @@
 <template>
-  <p class="status" :data-status="status">Save status: {{ status }}</p>
+  <p class="status" :data-status="status">{{ t("saveStatus.label") }}: {{ t(`saveStatus.${status}`) }}</p>
 </template>
 
 <script setup lang="ts">
 import type { SaveStatus } from "../domain/models";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 defineProps<{ status: SaveStatus }>();
 </script>

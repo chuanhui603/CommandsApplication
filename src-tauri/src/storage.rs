@@ -55,6 +55,7 @@ pub struct SaveMindmapMetadata {
     pub root_node_id: Option<String>,
     pub active_path_id: Option<String>,
     pub current_version: i64,
+    pub last_build_result_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -100,6 +101,70 @@ pub struct ListTemplatesResponse {
 pub struct CloneBuiltinTemplateRequest {
     pub template_id: String,
     pub new_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertTemplateRequest {
+    pub name: String,
+    pub description: String,
+    pub platform_kind: String,
+    pub category: Option<String>,
+    pub command_pattern: String,
+    pub params: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTemplateRequest {
+    pub template_id: String,
+    pub name: String,
+    pub description: String,
+    pub platform_kind: String,
+    pub category: Option<String>,
+    pub command_pattern: String,
+    pub params: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateMutationResponse {
+    pub template_id: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteUserTemplateRequest {
+    pub template_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveBuildResultRequest {
+    pub mindmap_id: String,
+    pub target: String,
+    pub output_mode: String,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveBuildResultResponse {
+    pub build_result_id: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRecentBuildResultsRequest {
+    pub mindmap_id: String,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListRecentBuildResultsResponse {
+    pub items: Vec<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -158,6 +223,7 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS build_results (
           id TEXT PRIMARY KEY,
           mindmap_id TEXT NOT NULL,
+                    mindmap_version INTEGER NOT NULL DEFAULT 0,
           target TEXT NOT NULL,
           output_mode TEXT NOT NULL,
           content TEXT NOT NULL,
@@ -167,26 +233,268 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), String> {
         "#,
     )
     .map_err(|e| format!("failed to init schema: {e}"))?;
+    ensure_column_exists(
+        conn,
+        "build_results",
+        "mindmap_version",
+        "ALTER TABLE build_results ADD COLUMN mindmap_version INTEGER NOT NULL DEFAULT 0",
+    )?;
     seed_builtin_templates(conn)?;
+    Ok(())
+}
+
+fn ensure_column_exists(
+    conn: &Connection,
+    table_name: &str,
+    column_name: &str,
+    alter_sql: &str,
+) -> Result<(), String> {
+    let pragma = format!("PRAGMA table_info({table_name})");
+    let mut stmt = conn
+        .prepare(&pragma)
+        .map_err(|e| format!("failed preparing table info query for {table_name}: {e}"))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| format!("failed reading table info for {table_name}: {e}"))?;
+
+    for column in columns {
+        if column.map_err(|e| format!("failed mapping table column for {table_name}: {e}"))?
+            == column_name
+        {
+            return Ok(());
+        }
+    }
+
+    conn.execute(alter_sql, [])
+        .map_err(|e| format!("failed altering {table_name} for column {column_name}: {e}"))?;
     Ok(())
 }
 
 fn seed_builtin_templates(conn: &Connection) -> Result<(), String> {
     let now = now_iso();
     let defaults = vec![
-        ("tpl_builtin_files_ls", "List files", "files and directories", "linux-shell", "files-and-directories", "ls -la"),
-        ("tpl_builtin_search_rg", "Search text", "search and filtering", "linux-shell", "search-and-filtering", "rg {{pattern}} {{path}}"),
-        ("tpl_builtin_git_status", "Git status", "git", "linux-shell", "git", "git status"),
-        ("tpl_builtin_docker_ps", "Docker list", "docker", "linux-shell", "docker", "docker ps -a"),
-        ("tpl_builtin_tar", "Tar gzip", "compression", "linux-shell", "compression", "tar -czf {{archive}} {{path}}"),
-        ("tpl_builtin_curl", "HTTP check", "networking", "linux-shell", "networking", "curl -I {{url}}"),
+                (
+                        "tpl_builtin_files_ls",
+                        "List files",
+                        "List files and directories under a target path.",
+                        "linux-shell",
+                        "files-and-directories",
+                        "ls -la {{path}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_ls_path",
+                                "paramKey": "path",
+                                "label": "Target path",
+                                "type": "path",
+                                "required": false,
+                                "defaultValue": ".",
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_search_rg",
+                        "Search text",
+                        "Search files using ripgrep.",
+                        "linux-shell",
+                        "search-and-filtering",
+                        "rg {{pattern}} {{path}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_rg_pattern",
+                                "paramKey": "pattern",
+                                "label": "Search pattern",
+                                "type": "text",
+                                "required": true,
+                                "defaultValue": null,
+                                "options": []
+                            },
+                            {
+                                "id": "param_rg_path",
+                                "paramKey": "path",
+                                "label": "Search path",
+                                "type": "path",
+                                "required": false,
+                                "defaultValue": ".",
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_git_status",
+                        "Git status",
+                        "Inspect the current Git working tree state.",
+                        "linux-shell",
+                        "git",
+                        "git status",
+                        "[]".to_string(),
+                ),
+                (
+                        "tpl_builtin_docker_ps",
+                        "Docker list",
+                        "List Docker containers.",
+                        "linux-shell",
+                        "docker",
+                        "docker ps {{flags}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_docker_flags",
+                                "paramKey": "flags",
+                                "label": "Extra flags",
+                                "type": "text",
+                                "required": false,
+                                "defaultValue": "-a",
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_tar",
+                        "Tar gzip",
+                        "Compress a file or directory into a tar.gz archive.",
+                        "linux-shell",
+                        "compression",
+                        "tar -czf {{archive}} {{path}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_tar_archive",
+                                "paramKey": "archive",
+                                "label": "Archive output",
+                                "type": "path",
+                                "required": true,
+                                "defaultValue": null,
+                                "options": []
+                            },
+                            {
+                                "id": "param_tar_path",
+                                "paramKey": "path",
+                                "label": "Source path",
+                                "type": "path",
+                                "required": true,
+                                "defaultValue": null,
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_curl",
+                        "HTTP check",
+                        "Send a quick HTTP HEAD request.",
+                        "linux-shell",
+                        "networking",
+                        "curl -I {{url}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_curl_url",
+                                "paramKey": "url",
+                                "label": "Target URL",
+                                "type": "text",
+                                "required": true,
+                                "defaultValue": "https://example.com",
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_ps_ls",
+                        "PowerShell list files",
+                        "List files in a folder using PowerShell.",
+                        "windows-powershell",
+                        "files-and-directories",
+                        "Get-ChildItem {{path}} -Force",
+                        serde_json::json!([
+                            {
+                                "id": "param_ps_path",
+                                "paramKey": "path",
+                                "label": "Folder path",
+                                "type": "path",
+                                "required": false,
+                                "defaultValue": ".",
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_ps_select_string",
+                        "PowerShell search text",
+                        "Search file contents using Select-String.",
+                        "windows-powershell",
+                        "search-and-filtering",
+                        "Select-String -Path {{path}} -Pattern {{pattern}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_ps_ss_path",
+                                "paramKey": "path",
+                                "label": "File path or glob",
+                                "type": "path",
+                                "required": true,
+                                "defaultValue": null,
+                                "options": []
+                            },
+                            {
+                                "id": "param_ps_ss_pattern",
+                                "paramKey": "pattern",
+                                "label": "Pattern",
+                                "type": "text",
+                                "required": true,
+                                "defaultValue": null,
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
+                (
+                        "tpl_builtin_wsl_apt_update",
+                        "WSL apt update",
+                        "Refresh package metadata inside WSL.",
+                        "wsl",
+                        "system",
+                        "wsl sudo apt update && wsl sudo apt upgrade -y",
+                        "[]".to_string(),
+                ),
+                (
+                        "tpl_builtin_wsl_docker_logs",
+                        "WSL docker logs",
+                        "Inspect Docker container logs inside WSL.",
+                        "wsl",
+                        "docker",
+                        "wsl docker logs {{container}} {{flags}}",
+                        serde_json::json!([
+                            {
+                                "id": "param_wsl_container",
+                                "paramKey": "container",
+                                "label": "Container name",
+                                "type": "text",
+                                "required": true,
+                                "defaultValue": null,
+                                "options": []
+                            },
+                            {
+                                "id": "param_wsl_flags",
+                                "paramKey": "flags",
+                                "label": "Extra flags",
+                                "type": "text",
+                                "required": false,
+                                "defaultValue": "--tail 100",
+                                "options": []
+                            }
+                        ]).to_string(),
+                ),
     ];
     for item in defaults {
         conn.execute(
-            r#"INSERT OR IGNORE INTO templates(
+                        r#"INSERT INTO templates(
               id,name,description,platform_kind,category,built_in,command_pattern,params_json,created_at,updated_at
-            ) VALUES(?1,?2,?3,?4,?5,1,?6,'[]',?7,?7)"#,
-            params![item.0, item.1, item.2, item.3, item.4, item.5, now],
+                        ) VALUES(?1,?2,?3,?4,?5,1,?6,?7,?8,?8)
+                        ON CONFLICT(id) DO UPDATE SET
+                            name=excluded.name,
+                            description=excluded.description,
+                            platform_kind=excluded.platform_kind,
+                            category=excluded.category,
+                            built_in=1,
+                            command_pattern=excluded.command_pattern,
+                            params_json=excluded.params_json,
+                            updated_at=excluded.updated_at"#,
+                        params![item.0, item.1, item.2, item.3, item.4, item.5, item.6, now],
         )
         .map_err(|e| format!("failed seeding template {}: {e}", item.0))?;
     }
@@ -305,7 +613,7 @@ pub fn save_mindmap_snapshot(
           "rootNodeId": request.mindmap.root_node_id,
           "activePathId": request.mindmap.active_path_id,
           "currentVersion": next_version,
-          "lastBuildResultId": serde_json::Value::Null,
+                    "lastBuildResultId": request.mindmap.last_build_result_id,
           "createdAt": now,
           "updatedAt": now
         }),
@@ -317,13 +625,14 @@ pub fn save_mindmap_snapshot(
     tx.execute(
         r#"INSERT INTO mindmaps(
           id,name,description,root_node_id,active_path_id,current_version,last_build_result_id,created_at,updated_at,snapshot_json
-        ) VALUES(?1,?2,?3,?4,?5,?6,NULL,?7,?7,?8)
+                ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8,?9)
         ON CONFLICT(id) DO UPDATE SET
           name=excluded.name,
           description=excluded.description,
           root_node_id=excluded.root_node_id,
           active_path_id=excluded.active_path_id,
           current_version=excluded.current_version,
+                    last_build_result_id=excluded.last_build_result_id,
           updated_at=excluded.updated_at,
           snapshot_json=excluded.snapshot_json"#,
         params![
@@ -333,6 +642,7 @@ pub fn save_mindmap_snapshot(
             request.mindmap.root_node_id,
             request.mindmap.active_path_id,
             next_version,
+                        request.mindmap.last_build_result_id,
             now,
             snapshot
         ],
@@ -433,6 +743,157 @@ pub fn clone_builtin_template(
     )
     .map_err(|e| format!("failed cloning template: {e}"))?;
     Ok(())
+}
+
+pub fn create_template(
+    app: &AppHandle,
+    request: UpsertTemplateRequest,
+) -> Result<TemplateMutationResponse, String> {
+    let conn = connect(app)?;
+    let now = now_iso();
+    let template_id = format!("tpl_user_{}", Uuid::new_v4().simple());
+    let params_json = serde_json::to_string(&request.params)
+        .map_err(|e| format!("failed serializing template params: {e}"))?;
+    conn.execute(
+        r#"INSERT INTO templates(
+          id,name,description,platform_kind,category,built_in,command_pattern,params_json,created_at,updated_at
+        ) VALUES(?1,?2,?3,?4,?5,0,?6,?7,?8,?8)"#,
+        params![
+            template_id,
+            request.name,
+            request.description,
+            request.platform_kind,
+            request.category,
+            request.command_pattern,
+            params_json,
+            now
+        ],
+    )
+    .map_err(|e| format!("failed creating template: {e}"))?;
+    Ok(TemplateMutationResponse {
+        template_id,
+        updated_at: now,
+    })
+}
+
+pub fn update_template(
+    app: &AppHandle,
+    request: UpdateTemplateRequest,
+) -> Result<TemplateMutationResponse, String> {
+    let conn = connect(app)?;
+    let now = now_iso();
+    let params_json = serde_json::to_string(&request.params)
+        .map_err(|e| format!("failed serializing template params: {e}"))?;
+    let affected = conn
+        .execute(
+            r#"UPDATE templates SET
+              name=?2,
+              description=?3,
+              platform_kind=?4,
+              category=?5,
+              command_pattern=?6,
+              params_json=?7,
+              updated_at=?8
+            WHERE id=?1 AND built_in=0"#,
+            params![
+                request.template_id,
+                request.name,
+                request.description,
+                request.platform_kind,
+                request.category,
+                request.command_pattern,
+                params_json,
+                now
+            ],
+        )
+        .map_err(|e| format!("failed updating template: {e}"))?;
+    if affected == 0 {
+        return Err("user template not found".to_string());
+    }
+    Ok(TemplateMutationResponse {
+        template_id: request.template_id,
+        updated_at: now,
+    })
+}
+
+pub fn delete_user_template(
+    app: &AppHandle,
+    request: DeleteUserTemplateRequest,
+) -> Result<(), String> {
+    let conn = connect(app)?;
+    conn.execute(
+        "DELETE FROM templates WHERE id=?1 AND built_in=0",
+        params![request.template_id],
+    )
+    .map_err(|e| format!("failed deleting template: {e}"))?;
+    Ok(())
+}
+
+pub fn save_build_result(
+    app: &AppHandle,
+    request: SaveBuildResultRequest,
+) -> Result<SaveBuildResultResponse, String> {
+    let mut conn = connect(app)?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("failed creating build result transaction: {e}"))?;
+    let now = now_iso();
+    let build_result_id = format!("build_{}", Uuid::new_v4().simple());
+    tx.execute(
+        r#"INSERT INTO build_results(
+          id,mindmap_id,target,output_mode,content,created_at
+        ) VALUES(?1,?2,?3,?4,?5,?6)"#,
+        params![
+            build_result_id,
+            request.mindmap_id,
+            request.target,
+            request.output_mode,
+            request.content,
+            now
+        ],
+    )
+    .map_err(|e| format!("failed saving build result: {e}"))?;
+    tx.execute(
+        "UPDATE mindmaps SET last_build_result_id=?2, updated_at=?3 WHERE id=?1",
+        params![request.mindmap_id, build_result_id, now],
+    )
+    .map_err(|e| format!("failed updating mindmap build metadata: {e}"))?;
+    tx.commit()
+        .map_err(|e| format!("failed committing build result transaction: {e}"))?;
+    Ok(SaveBuildResultResponse {
+        build_result_id,
+        created_at: now,
+    })
+}
+
+pub fn list_recent_build_results(
+    app: &AppHandle,
+    request: ListRecentBuildResultsRequest,
+) -> Result<ListRecentBuildResultsResponse, String> {
+    let conn = connect(app)?;
+    let limit = request.limit.unwrap_or(10);
+    let mut stmt = conn
+        .prepare(
+            "SELECT id,mindmap_id,target,output_mode,content,created_at FROM build_results WHERE mindmap_id=?1 ORDER BY created_at DESC LIMIT ?2",
+        )
+        .map_err(|e| format!("failed preparing recent build results query: {e}"))?;
+    let rows = stmt
+        .query_map(params![request.mindmap_id, limit], |row| {
+            Ok(serde_json::json!({
+              "id": row.get::<_, String>(0)?,
+              "mindmapId": row.get::<_, String>(1)?,
+              "target": row.get::<_, String>(2)?,
+              "outputMode": row.get::<_, String>(3)?,
+              "content": row.get::<_, String>(4)?,
+              "createdAt": row.get::<_, String>(5)?
+            }))
+        })
+        .map_err(|e| format!("failed querying recent build results: {e}"))?;
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row.map_err(|e| format!("failed mapping build result row: {e}"))?);
+    }
+    Ok(ListRecentBuildResultsResponse { items })
 }
 
 pub fn export_json_to_file(path: String, payload: Value) -> Result<(), String> {

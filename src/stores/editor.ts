@@ -65,12 +65,12 @@ export const loadMindmap = (detail: MindmapDetail): void => {
   editorState.saveStatus = "saved";
 };
 
-export const addNode = (x = 120, y = 80): void => {
+export const addNode = (x = 120, y = 80, title = "New Command Node"): void => {
   const id = randomId("node");
   const node: CommandNode = {
     id,
     templateId: null,
-    title: "New Command Node",
+    title,
     notes: "",
     includeInOutput: true,
     orderOverride: null,
@@ -92,6 +92,30 @@ export const updateNode = (id: string, patch: Partial<CommandNode>): void => {
   const target = editorState.nodes.find((node) => node.id === id);
   if (!target) return;
   Object.assign(target, patch, { updatedAt: nowIso() });
+  markDirty();
+};
+
+export const removeNode = (id: string): void => {
+  const nextNodes = editorState.nodes.filter((node) => node.id !== id);
+  if (nextNodes.length === editorState.nodes.length) return;
+
+  editorState.nodes = nextNodes;
+  editorState.edges = editorState.edges.filter(
+    (edge) => edge.sourceNodeId !== id && edge.targetNodeId !== id
+  );
+  delete editorState.layouts.graph[id];
+  delete editorState.layouts.tree[id];
+
+  if (editorState.mindmap.rootNodeId === id) {
+    editorState.mindmap.rootNodeId = nextNodes[0]?.id ?? null;
+  }
+  if (editorState.mindmap.activePathId === id) {
+    editorState.mindmap.activePathId = null;
+  }
+  if (editorState.selectedNodeId === id) {
+    editorState.selectedNodeId = nextNodes[0]?.id ?? null;
+  }
+
   markDirty();
 };
 

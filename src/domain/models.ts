@@ -78,6 +78,7 @@ export interface TemplateDefinition {
 export interface BuildResult {
   id: string;
   mindmapId: string;
+  mindmapVersion: number;
   target: PlatformKind;
   outputMode: OutputMode;
   content: string;

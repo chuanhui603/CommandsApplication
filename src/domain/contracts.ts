@@ -1,4 +1,4 @@
-import type { LayoutState, MindmapDetail, PlatformKind, TemplateDefinition } from "./models";
+import type { BuildResult, LayoutState, MindmapDetail, OutputMode, PlatformKind, TemplateDefinition } from "./models";
 
 export const tauriCommands = {
   appInitialize: "app_initialize",
@@ -7,7 +7,12 @@ export const tauriCommands = {
   getMindmapDetail: "get_mindmap_detail",
   saveMindmapSnapshot: "save_mindmap_snapshot",
   listTemplates: "list_templates",
+  createTemplate: "create_template",
+  updateTemplate: "update_template",
   cloneBuiltinTemplate: "clone_builtin_template",
+  deleteUserTemplate: "delete_user_template",
+  saveBuildResult: "save_build_result",
+  listRecentBuildResults: "list_recent_build_results",
   exportJsonToFile: "export_json_to_file",
   importJsonFromFile: "import_json_from_file"
 } as const;
@@ -44,6 +49,7 @@ export interface SaveMindmapSnapshotRequest {
     rootNodeId: string | null;
     activePathId: string | null;
     currentVersion: number;
+    lastBuildResultId: string | null;
   };
   nodes: MindmapDetail["nodes"];
   edges: MindmapDetail["edges"];
@@ -74,6 +80,49 @@ export interface ListTemplatesResponse {
 export interface CloneBuiltinTemplateRequest {
   templateId: string;
   newName: string;
+}
+
+export interface CreateTemplateRequest {
+  name: string;
+  description: string;
+  platformKind: PlatformKind;
+  category: string | null;
+  commandPattern: string;
+  params: TemplateDefinition["params"];
+}
+
+export interface UpdateTemplateRequest extends CreateTemplateRequest {
+  templateId: string;
+}
+
+export interface TemplateMutationResponse {
+  templateId: string;
+  updatedAt: string;
+}
+
+export interface DeleteUserTemplateRequest {
+  templateId: string;
+}
+
+export interface SaveBuildResultRequest {
+  mindmapId: string;
+  target: PlatformKind;
+  outputMode: OutputMode;
+  content: string;
+}
+
+export interface SaveBuildResultResponse {
+  buildResultId: string;
+  createdAt: string;
+}
+
+export interface ListRecentBuildResultsRequest {
+  mindmapId: string;
+  limit?: number;
+}
+
+export interface ListRecentBuildResultsResponse {
+  items: BuildResult[];
 }
 
 export interface JsonImportResponse {
