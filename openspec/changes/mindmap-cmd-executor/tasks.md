@@ -15,25 +15,25 @@
 
 ## 3. Template Library
 
-- [ ] 3.1 Implement built-in read-only template support and clone-to-user-library behavior
-- [ ] 3.2 Implement custom template creation and editing with platform-kind selection for Linux shell, WSL, and Windows PowerShell
-- [ ] 3.3 Seed the built-in library with the initial six categories: files and directories, search and filtering, Git, Docker, compression, and networking
-- [ ] 3.4 Support user-defined AI command-set templates for GitHub Copilot, Claude, and OpenSpec without shipping them as built-in defaults
+- [x] 3.1 Implement built-in read-only template support and clone-to-user-library behavior
+- [x] 3.2 Implement custom template creation and editing with platform-kind selection for Linux shell, WSL, and Windows PowerShell
+- [x] 3.3 Seed the built-in library with the initial six categories: files and directories, search and filtering, Git, Docker, compression, and networking
+- [x] 3.4 Support user-defined AI command-set templates for GitHub Copilot, Claude, and OpenSpec without shipping them as built-in defaults
 
 ## 4. Import / Export
 
-- [ ] 4.1 Define and implement the dedicated JSON format for mindmap import/export, including referenced-template packaging
-- [ ] 4.2 Define and implement the dedicated JSON format for bulk template-library import/export
-- [ ] 4.3 Implement strict conflict blocking and diagnostic reporting for mindmap and template-library imports
+- [x] 4.1 Define and implement the dedicated JSON format for mindmap import/export, including referenced-template packaging
+- [x] 4.2 Define and implement the dedicated JSON format for bulk template-library import/export
+- [x] 4.3 Implement strict conflict blocking and diagnostic reporting for mindmap and template-library imports
 
 ## 5. Generation and Validation
 
-- [ ] 5.1 Implement validator rules for root-node presence, active-path validity, cycle detection, required parameters, target compatibility, and import conflicts
-- [ ] 5.2 Implement live preview of generated output for the selected target and output mode
-- [ ] 5.3 Implement explicit generation of final command output and script output with persisted last-result metadata
+- [x] 5.1 Implement validator rules for root-node presence, active-path validity, cycle detection, required parameters, target compatibility, and import conflicts
+- [x] 5.2 Implement live preview of generated output for the selected target and output mode
+- [x] 5.3 Implement explicit generation of final command output and script output with persisted last-result metadata
 
 ## 6. Persistence and Quality
 
-- [ ] 6.1 Persist current version metadata, last generated result, and updated timestamps for each mindmap
-- [ ] 6.2 Add tests covering import formats, validation failures, active-path generation, template-platform compatibility, and built-in template cloning
+- [x] 6.1 Persist current version metadata, last generated result, and updated timestamps for each mindmap
+- [x] 6.2 Add tests covering import formats, validation failures, active-path generation, template-platform compatibility, and built-in template cloning
 - [x] 6.3 Document the Tauri architecture, including which responsibilities stay in Vue/TypeScript and which are handled by the Rust bridge

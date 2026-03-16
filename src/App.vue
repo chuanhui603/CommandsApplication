@@ -177,6 +177,7 @@ import {
   validateMindmapImportConflicts,
   validateTemplateBundleConflicts,
 } from "./utils/transferFormats";
+import { resolveActivePathNodes } from "./utils/validators";
 
 const { localeState, setLocale, t } = useI18n();
 
@@ -216,10 +217,25 @@ const preview = computed(() =>
     outputMode: outputMode.value,
   })
 );
-const combinedDiagnostics = computed<ValidatorDiagnostic[]>(() => [
-  ...editorState.diagnostics,
-  ...preview.value.diagnostics,
-]);
+const combinedDiagnostics = computed<ValidatorDiagnostic[]>(() => {
+  const diagnostics = [...editorState.diagnostics, ...preview.value.diagnostics];
+  const seen = new Set<string>();
+  return diagnostics.filter((diagnostic) => {
+    const key = [
+      diagnostic.code,
+      diagnostic.level,
+      diagnostic.message,
+      diagnostic.nodeId ?? "",
+      diagnostic.edgeId ?? "",
+      diagnostic.templateId ?? "",
+    ].join("::");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+});
 
 const createEmptyMindmap = (name = String(t("mindmap.untitled"))): MindmapDetail => ({
   mindmap: {
@@ -244,6 +260,28 @@ const currentMindmapDetail = (): MindmapDetail => ({
   edges: [...editorState.edges],
   layouts: structuredClone(editorState.layouts),
 });
+
+const inferPreferredTarget = (detail: MindmapDetail): PlatformKind | null => {
+  const pathNodes = resolveActivePathNodes(detail.mindmap, detail.nodes, detail.edges);
+  const templateMap = new Map(templates.value.map((template) => [template.id, template]));
+  const pathPlatforms = pathNodes
+    .map((node) => (node.templateId ? templateMap.get(node.templateId)?.platformKind ?? null : null))
+    .filter((value): value is PlatformKind => value !== null);
+
+  if (pathPlatforms.length === 0) {
+    return null;
+  }
+
+  const uniquePlatforms = [...new Set(pathPlatforms)];
+  return uniquePlatforms.length === 1 ? uniquePlatforms[0] : pathPlatforms[0];
+};
+
+const syncBuildTargetForMindmap = (detail: MindmapDetail): void => {
+  const preferredTarget = inferPreferredTarget(detail);
+  if (preferredTarget) {
+    buildTarget.value = preferredTarget;
+  }
+};
 
 const toSnapshotRequest = (): SaveMindmapSnapshotRequest => ({
   mindmap: {
@@ -288,6 +326,20 @@ const refreshRecentBuildResults = async (): Promise<void> => {
   recentBuildResults.value = result.items;
 };
 
+const pickInitialMindmapId = (): string | null => {
+  if (mindmaps.value.length === 0) {
+    return null;
+  }
+
+  const sampleMindmap = mindmaps.value.find((mindmap) => mindmap.id.startsWith("mm_sample_"));
+  if (sampleMindmap) {
+    return sampleMindmap.id;
+  }
+
+  const firstNonEmptyMindmap = mindmaps.value.find((mindmap) => mindmap.lastBuildResultId || mindmap.currentVersion > 1);
+  return firstNonEmptyMindmap?.id ?? mindmaps.value[0].id;
+};
+
 const bootstrapMindmap = async (): Promise<void> => {
   await refreshMindmaps();
   if (mindmaps.value.length === 0) {
@@ -296,8 +348,14 @@ const bootstrapMindmap = async (): Promise<void> => {
     markDirty();
     return;
   }
-  const first = await getMindmapDetail(mindmaps.value[0].id);
+  const initialMindmapId = pickInitialMindmapId();
+  if (!initialMindmapId) {
+    return;
+  }
+  const first = await getMindmapDetail(initialMindmapId);
   loadMindmap(first);
+  editorState.diagnostics = [];
+  syncBuildTargetForMindmap(first);
   await refreshRecentBuildResults();
 };
 
@@ -441,6 +499,7 @@ const handleImportMindmap = async (): Promise<void> => {
     templateId: node.templateId ? templateIdMap.get(node.templateId) ?? node.templateId : null,
   }));
   loadMindmap(imported);
+  syncBuildTargetForMindmap(imported);
   editorState.diagnostics = [];
   await refreshTemplates();
   markDirty();
@@ -480,8 +539,8 @@ const handleImportTemplateBundle = async (): Promise<void> => {
 };
 
 const handleGenerate = async (): Promise<void> => {
-  editorState.diagnostics = preview.value.diagnostics;
-  if (editorState.diagnostics.some((diagnostic) => diagnostic.level === "error")) return;
+  const blockingDiagnostics = preview.value.diagnostics.filter((diagnostic) => diagnostic.level === "error");
+  if (blockingDiagnostics.length > 0) return;
   const result = await saveBuildResult({
     mindmapId: editorState.mindmap.id,
     target: buildTarget.value,
@@ -495,6 +554,7 @@ const handleGenerate = async (): Promise<void> => {
 
 const createNewMindmap = (): void => {
   loadMindmap(createEmptyMindmap());
+  buildTarget.value = "linux-shell";
   selectedLibraryTemplate.value = null;
   recentBuildResults.value = [];
   editorState.diagnostics = [];
@@ -506,6 +566,7 @@ const onSwitchMindmap = async (event: Event): Promise<void> => {
   const nextId = (event.target as HTMLSelectElement).value;
   const detail = await getMindmapDetail(nextId);
   loadMindmap(detail);
+  syncBuildTargetForMindmap(detail);
   editorState.diagnostics = [];
   await refreshRecentBuildResults();
 };

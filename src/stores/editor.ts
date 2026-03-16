@@ -85,6 +85,9 @@ export const addNode = (x = 120, y = 80, title = "New Command Node"): void => {
   if (!editorState.mindmap.rootNodeId) {
     editorState.mindmap.rootNodeId = id;
   }
+  if (!editorState.mindmap.activePathId) {
+    editorState.mindmap.activePathId = id;
+  }
   markDirty();
 };
 
@@ -110,7 +113,7 @@ export const removeNode = (id: string): void => {
     editorState.mindmap.rootNodeId = nextNodes[0]?.id ?? null;
   }
   if (editorState.mindmap.activePathId === id) {
-    editorState.mindmap.activePathId = null;
+    editorState.mindmap.activePathId = nextNodes[0]?.id ?? null;
   }
   if (editorState.selectedNodeId === id) {
     editorState.selectedNodeId = nextNodes[0]?.id ?? null;
