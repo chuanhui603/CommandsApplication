@@ -1,68 +1,254 @@
-# Command Mindmap Executor 使用說明
+# Command Mindmap Executor 架構與介面規格（繁中）
 
-[English README](README.md)
+本文件提供給產品/技術使用者快速理解本專案的產品結構與 Tauri 介面契約。
+
+## 產品介紹
 
 Command Mindmap Executor 是一個本地優先的桌面工具，讓你用心智圖方式整理可重用的命令片段，並在需要時輸出成可重用的命令或腳本流程。
 
-## 這個專案可以做什麼
+## 產品結構（給 PM 與使用者）
 
-- 用 Tree View 和 Graph View 建立命令流程
-- 用模板重用常見命令片段
-- 在輸出前先預覽命令或腳本結果
-- 將資料保存在本機
-- 用 JSON 匯入與匯出 mindmap 與模板資料
+1. **編輯層**：Tree View + Graph View 編排命令流程。  
+2. **資料層**：以 SQLite 儲存 mindmap、範本、產出結果與設定。  
+3. **桌面能力層**：由 Tauri 提供本機檔案操作與桌面封裝。  
 
-## 適合誰使用
+## 系統邊界
 
-這個工具適合需要長期整理與重用命令列流程的人，例如：
+- Vue / TypeScript：UI、狀態、驗證流程、命令生成流程。
+- Tauri / Rust：啟動、SQLite、檔案 I/O、型別化回傳。
 
-- 經常使用 Linux shell、WSL 或 PowerShell 的開發者
-- 想把常用指令整理成可視化流程的人
-- 需要在多台機器之間搬移命令集的人
-- 想把零散筆記整理成可重用模板的人
+## Tauri Command 契約（TypeScript Interface）
 
-## 基本流程
+```ts
+export type PlatformKind = "linux-shell" | "wsl" | "windows-powershell";
+export type OutputMode = "command" | "script";
+export type IsoDateTime = string;
 
-1. 建立一張 command mindmap
-2. 加入或重用命令模板
-3. 連接節點並選擇主輸出路徑
-4. 預覽最終命令或腳本
-5. 儲存於本機或匯出成 JSON
+export interface CommandError {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
 
-## 第一版平台範圍
+export type CommandResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: CommandError };
 
-第一版主要針對以下三種目標平台：
+export interface AppInitializeRequest {}
+export interface AppInitializeResponse {
+  appVersion: string;
+  dbReady: boolean;
+  dataDir: string;
+  schemaVersion: number;
+}
 
-- Linux shell
-- WSL
-- Windows PowerShell
+export interface GetStorageStatusResponse {
+  dbReady: boolean;
+  lastError: string | null;
+}
 
-## 本地優先設計
+export interface MindmapSummary {
+  id: string;
+  name: string;
+  updatedAt: IsoDateTime;
+  currentVersion: number;
+  lastBuildResultId: string | null;
+}
+export interface ListMindmapsResponse {
+  items: MindmapSummary[];
+}
 
-本專案的設計原則是讓資料保留在你的電腦上：
+export interface CreateMindmapRequest {
+  name: string;
+  description?: string;
+}
+export interface CreateMindmapResponse {
+  mindmapId: string;
+  createdAt: IsoDateTime;
+}
 
-- 本機保存為預設行為
-- 不依賴雲端服務才能使用
-- 透過匯入與匯出功能做備份與跨主機搬移
+export interface GetMindmapDetailRequest {
+  mindmapId: string;
+}
+export interface SaveMindmapSnapshotRequest {
+  mindmap: {
+    id: string;
+    name: string;
+    description?: string;
+    rootNodeId: string | null;
+    activePathId: string | null;
+    currentVersion: number;
+  };
+  nodes: unknown[];
+  edges: unknown[];
+  layouts: { tree: Record<string, unknown>; graph: Record<string, unknown> };
+  metadata: { updatedAt: IsoDateTime };
+}
+export interface SaveMindmapSnapshotResponse {
+  ok: true;
+  mindmapId: string;
+  currentVersion: number;
+  updatedAt: IsoDateTime;
+}
+export interface DeleteMindmapRequest {
+  mindmapId: string;
+}
 
-## 開發模式啟動
+export interface ListTemplatesRequest {
+  platformKind: PlatformKind | null;
+  category: string | null;
+  includeBuiltIn: boolean;
+  includeUser: boolean;
+}
+export interface ListTemplatesResponse {
+  items: unknown[];
+}
+export interface CreateTemplateRequest {
+  name: string;
+  description: string;
+  platformKind: PlatformKind;
+  category: string | null;
+  commandPattern: string;
+  params: unknown[];
+}
+export interface UpdateTemplateRequest extends CreateTemplateRequest {
+  templateId: string;
+}
+export interface CloneBuiltinTemplateRequest {
+  templateId: string;
+  newName: string;
+}
+export interface DeleteUserTemplateRequest {
+  templateId: string;
+}
 
-如果你想在本機啟動開發環境：
+export interface ExportMindmapToFileRequest {
+  mindmapId: string;
+  payload: unknown;
+}
+export interface ImportMindmapFromFileResponse {
+  fileName: string;
+  payload: unknown;
+}
+export interface ExportTemplateBundleToFileRequest {
+  payload: unknown;
+}
+export interface ImportTemplateBundleFromFileResponse {
+  fileName: string;
+  payload: unknown;
+}
 
-```bash
-npm install
-npm run tauri:dev
+export interface SaveBuildResultRequest {
+  mindmapId: string;
+  target: PlatformKind;
+  outputMode: OutputMode;
+  content: string;
+}
+export interface ListRecentBuildResultsRequest {
+  mindmapId: string;
+  limit?: number;
+}
+export interface GetUserSettingsResponse {
+  values: Record<string, unknown>;
+}
+export interface UpdateUserSettingsRequest {
+  values: Record<string, unknown>;
+}
 ```
 
-如果你想打包桌面應用程式：
+## Rust Command Stub 規格（Tauri）
 
-```bash
-npm run tauri:build
+> 下列為介面 stub 規格，便於 Rust 與 TypeScript 共同對齊；可先以 `todo!()` 補齊實作。
+
+```rust
+use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInitializeResponse {
+    pub app_version: String,
+    pub db_ready: bool,
+    pub data_dir: String,
+    pub schema_version: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMindmapSnapshotRequest {
+    pub mindmap: serde_json::Value,
+    pub nodes: Vec<serde_json::Value>,
+    pub edges: Vec<serde_json::Value>,
+    pub layouts: serde_json::Value,
+    pub metadata: serde_json::Value,
+}
+
+#[tauri::command]
+pub fn app_initialize(app: AppHandle) -> Result<AppInitializeResponse, String> { todo!() }
+
+#[tauri::command]
+pub fn get_storage_status(app: AppHandle) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn list_mindmaps(app: AppHandle) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn create_mindmap(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn get_mindmap_detail(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn save_mindmap_snapshot(
+    app: AppHandle,
+    request: SaveMindmapSnapshotRequest,
+) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn delete_mindmap(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
+
+#[tauri::command]
+pub fn list_templates(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn create_template(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn update_template(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn clone_builtin_template(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
+
+#[tauri::command]
+pub fn delete_user_template(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
+
+#[tauri::command]
+pub fn export_mindmap_to_file(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
+
+#[tauri::command]
+pub fn import_mindmap_from_file(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn export_template_bundle_to_file(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
+
+#[tauri::command]
+pub fn import_template_bundle_from_file(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn save_build_result(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn list_recent_build_results(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn get_user_settings(app: AppHandle) -> Result<serde_json::Value, String> { todo!() }
+
+#[tauri::command]
+pub fn update_user_settings(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
 ```
 
-## 文件
+## 現況備註（與現行程式對齊）
 
-- 產品架構總覽：[docs/architecture/overview.md](docs/architecture/overview.md)
-- Tauri command 契約：[docs/reference/tauri-command-contracts.md](docs/reference/tauri-command-contracts.md)
-- SQLite schema 草案：[docs/reference/sqlite-schema.md](docs/reference/sqlite-schema.md)
+- 目前已落地核心子集：`app_initialize`、`get_storage_status`、`list_mindmaps`、`get_mindmap_detail`、`save_mindmap_snapshot`、`list_templates`、`clone_builtin_template`、`export_json_to_file`、`import_json_from_file`。
+- 其餘 command 可依本規格逐步補齊，且維持 request/response 的型別化契約。
 
