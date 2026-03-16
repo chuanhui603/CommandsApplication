@@ -51,12 +51,37 @@ The application is designed to keep your data on your own machine.
 
 ## Development Quick Start
 
-If you want to run the project locally during development:
+If you want to run the desktop app locally during development on Windows:
+
+1. Install Node.js 20+, Rust, Microsoft Visual Studio C++ Build Tools, and WebView2 Runtime.
+2. Open a terminal in this project folder.
+3. Install dependencies:
 
 ```bash
 npm install
+```
+
+4. Install the local Tauri CLI used by the npm scripts:
+
+```bash
+npm install -D @tauri-apps/cli
+```
+
+5. Start the desktop app:
+
+```bash
 npm run tauri:dev
 ```
+
+This starts both the Vite dev server and the Tauri desktop window.
+
+If you only want to preview the front-end in the browser:
+
+```bash
+npm run dev
+```
+
+Common issue: if `tauri` is not recognized, the local CLI is missing. Run `npm install -D @tauri-apps/cli` and try again.
 
 To build the desktop application:
 

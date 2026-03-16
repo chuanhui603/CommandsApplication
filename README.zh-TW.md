@@ -1,253 +1,145 @@
-# Command Mindmap Executor 架構與介面規格
-本文件提供給產品/技術使用者快速理解本專案的產品結構與 Tauri 介面契約。
+# Command Mindmap Executor
 
-## 產品介紹
+[English README](README.md)
 
-Command Mindmap Executor 是一個本地優先的桌面工具，讓你用心智圖方式整理可重用的命令片段，並在需要時輸出成可重用的命令或腳本流程。
+Command Mindmap Executor 是一個本地優先的桌面應用，讓你用心智圖方式整理可重用命令，並在需要時輸出成 command 或 script。
 
-## 產品結構
+如果你只是想把專案跑起來，先看下面這段就夠了。
 
-1. **編輯層**：Tree View + Graph View 編排命令流程。  
-2. **資料層**：以 SQLite 儲存 mindmap、範本、產出結果與設定。  
-3. **桌面能力層**：由 Tauri 提供本機檔案操作與桌面封裝。  
+## 直接照做：Windows 開啟步驟
 
-## 系統邊界
+### 1. 安裝必要工具
 
-- Vue / TypeScript：UI、狀態、驗證流程、命令生成流程。
-- Tauri / Rust：啟動、SQLite、檔案 I/O、型別化回傳。
+請先確認你的電腦有這些工具：
 
-## Tauri Command 契約（TypeScript Interface）
+- Node.js 20 以上
+- Rust toolchain
+- Microsoft Visual Studio C++ Build Tools
+- WebView2 Runtime
 
-```ts
-export type PlatformKind = "linux-shell" | "wsl" | "windows-powershell";
-export type OutputMode = "command" | "script";
-export type IsoDateTime = string;
+建議用下面指令確認：
 
-export interface CommandError {
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-}
-
-export type CommandResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: CommandError };
-
-export interface AppInitializeRequest {}
-export interface AppInitializeResponse {
-  appVersion: string;
-  dbReady: boolean;
-  dataDir: string;
-  schemaVersion: number;
-}
-
-export interface GetStorageStatusResponse {
-  dbReady: boolean;
-  lastError: string | null;
-}
-
-export interface MindmapSummary {
-  id: string;
-  name: string;
-  updatedAt: IsoDateTime;
-  currentVersion: number;
-  lastBuildResultId: string | null;
-}
-export interface ListMindmapsResponse {
-  items: MindmapSummary[];
-}
-
-export interface CreateMindmapRequest {
-  name: string;
-  description?: string;
-}
-export interface CreateMindmapResponse {
-  mindmapId: string;
-  createdAt: IsoDateTime;
-}
-
-export interface GetMindmapDetailRequest {
-  mindmapId: string;
-}
-export interface SaveMindmapSnapshotRequest {
-  mindmap: {
-    id: string;
-    name: string;
-    description?: string;
-    rootNodeId: string | null;
-    activePathId: string | null;
-    currentVersion: number;
-  };
-  nodes: unknown[];
-  edges: unknown[];
-  layouts: { tree: Record<string, unknown>; graph: Record<string, unknown> };
-  metadata: { updatedAt: IsoDateTime };
-}
-export interface SaveMindmapSnapshotResponse {
-  ok: true;
-  mindmapId: string;
-  currentVersion: number;
-  updatedAt: IsoDateTime;
-}
-export interface DeleteMindmapRequest {
-  mindmapId: string;
-}
-
-export interface ListTemplatesRequest {
-  platformKind: PlatformKind | null;
-  category: string | null;
-  includeBuiltIn: boolean;
-  includeUser: boolean;
-}
-export interface ListTemplatesResponse {
-  items: unknown[];
-}
-export interface CreateTemplateRequest {
-  name: string;
-  description: string;
-  platformKind: PlatformKind;
-  category: string | null;
-  commandPattern: string;
-  params: unknown[];
-}
-export interface UpdateTemplateRequest extends CreateTemplateRequest {
-  templateId: string;
-}
-export interface CloneBuiltinTemplateRequest {
-  templateId: string;
-  newName: string;
-}
-export interface DeleteUserTemplateRequest {
-  templateId: string;
-}
-
-export interface ExportMindmapToFileRequest {
-  mindmapId: string;
-  payload: unknown;
-}
-export interface ImportMindmapFromFileResponse {
-  fileName: string;
-  payload: unknown;
-}
-export interface ExportTemplateBundleToFileRequest {
-  payload: unknown;
-}
-export interface ImportTemplateBundleFromFileResponse {
-  fileName: string;
-  payload: unknown;
-}
-
-export interface SaveBuildResultRequest {
-  mindmapId: string;
-  target: PlatformKind;
-  outputMode: OutputMode;
-  content: string;
-}
-export interface ListRecentBuildResultsRequest {
-  mindmapId: string;
-  limit?: number;
-}
-export interface GetUserSettingsResponse {
-  values: Record<string, unknown>;
-}
-export interface UpdateUserSettingsRequest {
-  values: Record<string, unknown>;
-}
+```powershell
+node -v
+npm -v
+rustc -V
+cargo -V
 ```
 
-## Rust Command Stub 規格（Tauri）
+只要其中任何一個指令出現找不到，就要先安裝對應工具。
 
-> 下列為介面 stub 規格，便於 Rust 與 TypeScript 共同對齊；可先以 `todo!()` 補齊實作。
+### 2. 進入專案資料夾
 
-```rust
-use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppInitializeResponse {
-    pub app_version: String,
-    pub db_ready: bool,
-    pub data_dir: String,
-    pub schema_version: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveMindmapSnapshotRequest {
-    pub mindmap: serde_json::Value,
-    pub nodes: Vec<serde_json::Value>,
-    pub edges: Vec<serde_json::Value>,
-    pub layouts: serde_json::Value,
-    pub metadata: serde_json::Value,
-}
-
-#[tauri::command]
-pub fn app_initialize(app: AppHandle) -> Result<AppInitializeResponse, String> { todo!() }
-
-#[tauri::command]
-pub fn get_storage_status(app: AppHandle) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn list_mindmaps(app: AppHandle) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn create_mindmap(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn get_mindmap_detail(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn save_mindmap_snapshot(
-    app: AppHandle,
-    request: SaveMindmapSnapshotRequest,
-) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn delete_mindmap(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
-
-#[tauri::command]
-pub fn list_templates(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn create_template(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn update_template(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn clone_builtin_template(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
-
-#[tauri::command]
-pub fn delete_user_template(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
-
-#[tauri::command]
-pub fn export_mindmap_to_file(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
-
-#[tauri::command]
-pub fn import_mindmap_from_file(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn export_template_bundle_to_file(app: AppHandle, request: serde_json::Value) -> Result<(), String> { todo!() }
-
-#[tauri::command]
-pub fn import_template_bundle_from_file(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn save_build_result(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn list_recent_build_results(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn get_user_settings(app: AppHandle) -> Result<serde_json::Value, String> { todo!() }
-
-#[tauri::command]
-pub fn update_user_settings(app: AppHandle, request: serde_json::Value) -> Result<serde_json::Value, String> { todo!() }
+```powershell
+cd C:\Users\charkchao\Desktop\API_TEST\CommandsExecuter
 ```
 
-## 現況備註（與現行程式對齊）
+### 3. 安裝 JavaScript 依賴
 
-- 目前已落地核心子集：`app_initialize`、`get_storage_status`、`list_mindmaps`、`get_mindmap_detail`、`save_mindmap_snapshot`、`list_templates`、`clone_builtin_template`、`export_json_to_file`、`import_json_from_file`。
-- 其餘 command 可依本規格逐步補齊，且維持 request/response 的型別化契約。
+```powershell
+npm install
+```
+
+
+### 4. 安裝 Tauri CLI
+
+```powershell
+npm install -D @tauri-apps/cli
+```
+
+### 5. 啟動桌面版開發模式
+
+```powershell
+npm run tauri:dev
+```
+
+這個指令會同時做兩件事：
+
+- 啟動 Vite 前端開發伺服器
+- 啟動 Tauri 桌面視窗
+
+成功後，你會看到一個桌面 App 視窗，而不是只有瀏覽器頁面。
+
+## 如果你只想先看前端畫面
+
+```powershell
+npm run dev
+```
+
+然後打開終端機顯示的本機網址，通常會是：
+
+```text
+http://localhost:5173
+```
+
+但這種方式只有前端，不能驗證 Tauri / SQLite 相關功能。
+
+## 最常見的失敗原因
+
+### `cargo install tauri-cli` 失敗
+
+先改用：
+
+```powershell
+npm install -D @tauri-apps/cli
+```
+
+因為這個專案的 scripts 只需要能呼叫到 `tauri` 指令，不一定非得裝成全域 Rust CLI。
+
+### `tauri` 不是內部或外部命令
+
+通常表示還沒安裝專案內的 CLI，執行：
+
+```powershell
+npm install -D @tauri-apps/cli
+```
+
+再重跑：
+
+```powershell
+npm run tauri:dev
+```
+
+### Rust 或 C++ toolchain 缺少
+
+如果出現編譯失敗、linker 失敗、找不到 MSVC 之類的錯誤，通常是這兩個沒裝完整：
+
+- Rust toolchain
+- Visual Studio C++ Build Tools
+
+### 只有瀏覽器打開，沒有桌面視窗
+
+你跑的是：
+
+```powershell
+npm run dev
+```
+
+不是：
+
+```powershell
+npm run tauri:dev
+```
+
+## 建置桌面安裝包
+
+```powershell
+npm run tauri:build
+```
+
+建置完成後，可到 Tauri 輸出資料夾查看產物。
+
+## 專案重點
+
+- 用 Tree View 和 Graph View 建立命令流程
+- 重用 Linux shell、WSL、Windows PowerShell 範本
+- 預覽輸出的 command 或 script
+- 資料本機保存
+- 支援 JSON 匯入與匯出
+
+## 相關文件
+
+- 架構總覽：[docs/architecture/overview.md](docs/architecture/overview.md)
+- Tauri command 契約：[docs/reference/tauri-command-contracts.md](docs/reference/tauri-command-contracts.md)
+- SQLite schema 草案：[docs/reference/sqlite-schema.md](docs/reference/sqlite-schema.md)
 
